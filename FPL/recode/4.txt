@@ -1,0 +1,130 @@
+# Color (H,S)
+X_color_train = extract_color_hs_3x3(Training_origin_data, h_bins=30, s_bins=32)
+X_color_test  = extract_color_hs_3x3(Test_data, h_bins=30, s_bins=32)
+
+color_svm = train_color_svm(X_color_train, y_train_road, C=10, gamma="scale")
+P_color_test = color_svm.predict_proba(X_color_test)
+
+
+P_color_test: (743, 12)
+Color SVM Test Accuracy: 0.7254374158815612
+
+Color SVM Confusion Matrix:
+ [[49  1  0  0  6  0  0  0  2  2  2  0]
+ [ 2 35  0  0  1  0  0  2  0  0  1  2]
+ [ 0  0 39  1  3  2  2  1  1  1  0  8]
+ [ 2  0  0 44 11  3  0  0  2  3  5  2]
+ [ 1  1  5  9 65  3  0  0  4  5  6  1]
+ [ 2  1  2  1  1 51  0  1  0  3  2  2]
+ [ 0  1  1  2  0  0 21  1  0  0  0  0]
+ [ 0  3  1  2  2  1  0 25  0  1  1  2]
+ [ 0  2  0  0  4  1  0  1 47  3  0  1]
+ [ 1  0  0  2  8  4  0  2  3 58  0  1]
+ [ 0  0  1  2  6  3  0  0  1  2 27  1]
+ [ 2  1  2  3  5  1  3  0  0  0  2 78]]
+
+Color SVM Classification Report:
+
+              precision    recall  f1-score   support
+
+           0     0.8305    0.7903    0.8099        62
+           1     0.7778    0.8140    0.7955        43
+           2     0.7647    0.6724    0.7156        58
+           3     0.6667    0.6111    0.6377        72
+...
+    accuracy                         0.7254       743
+   macro avg     0.7362    0.7282    0.7312       743
+weighted avg     0.7285    0.7254    0.7260       743
+
+
+PCA_DIMS = [16, 32, 64, 128, 256, 512]  # 원하는 대로 조절
+
+hog_pack = train_hog_pca_svm_by_dims(
+    X_train=X_hog_train,
+    y_train=y_train_road,
+    X_test=X_hog_test,
+    y_test=y_test_road,
+    pca_dims=PCA_DIMS,
+    C=10,
+    gamma="scale"
+)
+
+hog_svm_models = hog_pack["hog_svm_models"]
+hog_pca_test_features = hog_pack["hog_pca_test_features"]
+hog_test_acc = hog_pack["test_acc"]
+hog_time_report = hog_pack["time_report"]
+
+print("\n===== HOG+PCA SVM summary =====")
+for d in PCA_DIMS:
+    tr = hog_time_report[d]
+    print(
+        f"PCA {d:>3d} | "
+        f"Test Acc={hog_test_acc[d]:.4f} | "
+        f"scale={tr['scale_sec']:.3f}s pca={tr['pca_sec']:.3f}s svm={tr['svm_fit_sec']:.3f}s total={tr['total_sec']:.3f}s"
+    )
+
+
+
+
+
+===== HOG+PCA SVM summary =====
+PCA  16 | Test Acc=0.4886 | scale=4.488s pca=1.496s svm=1.045s total=7.214s
+PCA  32 | Test Acc=0.5343 | scale=2.438s pca=1.068s svm=0.982s total=4.693s
+PCA  64 | Test Acc=0.5222 | scale=1.760s pca=1.581s svm=1.171s total=4.749s
+PCA 128 | Test Acc=0.4926 | scale=1.701s pca=2.490s svm=1.420s total=5.956s
+PCA 256 | Test Acc=0.4334 | scale=1.313s pca=2.896s svm=2.112s total=6.947s
+PCA 512 | Test Acc=0.3943 | scale=1.260s pca=5.390s svm=3.773s total=11.506s
+
+===== LR Fusion per PCA dim =====
+[PCA dim= 16] alpha_hat(shape)=0.373 | TestAcc=0.7618 | P_fusion_test=(743, 12)
+[PCA dim= 32] alpha_hat(shape)=0.384 | TestAcc=0.7604 | P_fusion_test=(743, 12)
+[PCA dim= 64] alpha_hat(shape)=0.384 | TestAcc=0.7591 | P_fusion_test=(743, 12)
+[PCA dim=128] alpha_hat(shape)=0.389 | TestAcc=0.7752 | P_fusion_test=(743, 12)
+[PCA dim=256] alpha_hat(shape)=0.369 | TestAcc=0.7591 | P_fusion_test=(743, 12)
+[PCA dim=512] alpha_hat(shape)=0.358 | TestAcc=0.7591 | P_fusion_test=(743, 12)
+
+===== Summary =====
+dim= 16 | alpha_hat=0.373 | acc=0.7618 | P_fusion=(743, 12)
+dim= 32 | alpha_hat=0.384 | acc=0.7604 | P_fusion=(743, 12)
+dim= 64 | alpha_hat=0.384 | acc=0.7591 | P_fusion=(743, 12)
+dim=128 | alpha_hat=0.389 | acc=0.7752 | P_fusion=(743, 12)
+dim=256 | alpha_hat=0.369 | acc=0.7591 | P_fusion=(743, 12)
+dim=512 | alpha_hat=0.358 | acc=0.7591 | P_fusion=(743, 12)
+
+
+Confusion Matrix (LR-Fusion, PCA=128):
+ [[52  1  0  0  4  0  0  0  1  2  2  0]
+ [ 2 35  0  1  3  0  0  0  0  0  1  1]
+ [ 0  0 43  1  2  0  0  1  0  1  0 10]
+ [ 1  0  0 50 11  2  0  0  2  1  2  3]
+ [ 1  1  3  8 72  2  0  0  2  2  5  4]
+ [ 1  1  2  0  3 53  0  1  0  1  2  2]
+ [ 0  1  1  2  0  0 21  1  0  0  0  0]
+ [ 1  2  1  2  1  1  0 26  0  1  1  2]
+ [ 0  2  0  0  3  1  0  1 48  3  0  1]
+ [ 1  0  0  2  8  2  0  1  2 63  0  0]
+ [ 0  0  0  1  8  2  0  0  1  2 28  1]
+ [ 1  0  1  1  8  1  0  0  0  0  0 85]]
+
+Classification Report (LR-Fusion, PCA=128):
+
+              precision    recall  f1-score   support
+
+           0     0.8667    0.8387    0.8525        62
+           1     0.8140    0.8140    0.8140        43
+           2     0.8431    0.7414    0.7890        58
+           3     0.7353    0.6944    0.7143        72
+           4     0.5854    0.7200    0.6457       100
+           5     0.8281    0.8030    0.8154        66
+           6     1.0000    0.8077    0.8936        26
+...
+    accuracy                         0.7752       743
+   macro avg     0.8050    0.7702    0.7848       743
+weighted avg     0.7843    0.7752    0.7772       743
+
+Output is truncated. View as a scrollable element or open in a text editor. Adjust cell output settings...
+
+
+Models saved with best_dim = 128
+
+

@@ -1,0 +1,16 @@
+{
+  "road": "donhwamunro_11_na",
+  "details": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "n_total_road": 300,
+  "n_used_detail": 300,
+  "hog_pca_dim_actual": 128,
+  "C": 10.0,
+  "gamma": "scale",
+  "alpha_shape_for_runtime_fusion": 0.3887865726409506,
+  "min_samples_per_detail": 8
+}

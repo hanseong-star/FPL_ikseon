@@ -1,0 +1,8 @@
+{
+  "road": "donhwamunro_11",
+  "level": "road",
+  "feature_tag": "full",
+  "n": 130,
+  "n_neighbors": 10,
+  "pca_dim_actual": 128
+}

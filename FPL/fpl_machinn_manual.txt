@@ -1,0 +1,135 @@
+
+
+
+2) 기본 사용법: “한 장” 예측
+2-1) 모델 로드
+import os, cv2, numpy as np, joblib
+
+MODEL_DIR = "FPL_models"
+best_dim = 64  # ✅ 저장할 때 사용한 best_dim을 그대로 넣기 (중요!)
+
+hog_svm    = joblib.load(f"{MODEL_DIR}/hog_svm_dim{best_dim}.pkl")
+hog_pca    = joblib.load(f"{MODEL_DIR}/hog_pca_dim{best_dim}.pkl")
+hog_scaler = joblib.load(f"{MODEL_DIR}/hog_scaler_dim{best_dim}.pkl")
+
+color_svm  = joblib.load(f"{MODEL_DIR}/color_svm.pkl")
+fusion_lr  = joblib.load(f"{MODEL_DIR}/fusion_lr_dim{best_dim}.pkl")
+
+road_label_map = joblib.load(f"{MODEL_DIR}/road_label_map.pkl")
+inv_map = {v:k for k,v in road_label_map.items()}  # 숫자->도로명
+
+2-2) 이미지 전처리(리사이즈/정규화)
+# 네 data_io.py에 있는 resize_keep_direction을 그대로 사용한다고 가정
+from data_io import resize_keep_direction
+
+img_path = "/path/to/your.jpg"
+
+img = cv2.imread(img_path)
+img = resize_keep_direction(img)
+img = img.astype(np.float32) / 255.0
+
+imgs = [img]  # feature 함수가 list 입력이라서 리스트로 감싸기
+
+2-3) feature 추출
+from features import extract_hog_3x3, extract_color_hs_3x3
+
+X_hog   = extract_hog_3x3(imgs, hog_size=(128,128), orientations=9,
+                          pixels_per_cell=(8,8), cells_per_block=(2,2))
+X_color = extract_color_hs_3x3(imgs, h_bins=30, s_bins=32)
+
+# shape: (1, D_hog), (1, D_color)
+print(X_hog.shape, X_color.shape)
+
+2-4) 각 모델 확률 계산 → fusion
+# HOG 파이프라인: scaler -> pca -> svm proba
+X_hog_scaled = hog_scaler.transform(X_hog)
+X_hog_pca    = hog_pca.transform(X_hog_scaled)
+P_shape      = hog_svm.predict_proba(X_hog_pca)     # (1, K)
+
+# Color SVM 확률
+P_color      = color_svm.predict_proba(X_color)     # (1, K)
+
+# Fusion 입력: (1, 2K)
+X_fuse = np.hstack([P_shape, P_color])
+
+# Fusion 확률(최종)
+P_final = fusion_lr.predict_proba(X_fuse)           # (1, K)
+pred_id = int(np.argmax(P_final, axis=1)[0])
+pred_road = inv_map[pred_id]
+
+print("Pred road:", pred_road)
+print("Pred class id:", pred_id)
+print("Confidence:", float(np.max(P_final)))
+
+
+
+3) 여러 장을 한 번에 예측하는 방법
+
+핵심은:
+
+이미지들을 리스트로 모아서 feature를 한 번에 뽑고
+
+batch로 확률 계산
+
+paths = ["/path/a.jpg", "/path/b.jpg", "/path/c.jpg"]
+
+imgs = []
+for p in paths:
+    im = cv2.imread(p)
+    im = resize_keep_direction(im)
+    im = im.astype(np.float32) / 255.0
+    imgs.append(im)
+
+X_hog   = extract_hog_3x3(imgs, hog_size=(128,128), orientations=9,
+                          pixels_per_cell=(8,8), cells_per_block=(2,2))
+X_color = extract_color_hs_3x3(imgs, h_bins=30, s_bins=32)
+
+X_hog_pca = hog_pca.transform(hog_scaler.transform(X_hog))
+P_shape   = hog_svm.predict_proba(X_hog_pca)
+P_color   = color_svm.predict_proba(X_color)
+
+P_final = fusion_lr.predict_proba(np.hstack([P_shape, P_color]))
+pred_ids = np.argmax(P_final, axis=1)
+
+pred_roads = [inv_map[int(i)] for i in pred_ids]
+
+for p, r, conf in zip(paths, pred_roads, np.max(P_final, axis=1)):
+    print(f"{p} -> {r} (conf={conf:.3f})")
+
+
+
+4) Top-k 후보 도로명 출력 (추천)
+def topk_roads(P, inv_map, k=3):
+    idx = np.argsort(P, axis=1)[:, -k:][:, ::-1]
+    out = []
+    for row in idx:
+        out.append([(inv_map[int(i)], float(P[0, i])) for i in row])
+    return out
+
+print(topk_roads(P_final, inv_map, k=5)[0])
+
+
+
+
+5) 가장 흔한 오류/체크리스트
+✅ (1) best_dim 불일치
+
+저장한 dim과 로드하는 dim이 다르면 바로 깨짐
+
+반드시 파일명에 맞춰 로드
+
+✅ (2) feature 파라미터 불일치
+
+학습 때 사용한 값과 동일해야 함:
+
+HOG: hog_size=(128,128), orientations=9, pixels_per_cell=(8,8), cells_per_block=(2,2)
+
+Color: h_bins=30, s_bins=32
+
+Resize: 가로 1024×682 / 세로 682×1024
+
+✅ (3) class 순서 불일치
+
+road_label_map.pkl을 같이 로드해서 inv_map으로 복원해야 함
+
+그래야 class id → 도로명 매핑이 정확해짐

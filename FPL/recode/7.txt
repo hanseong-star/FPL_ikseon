@@ -1,0 +1,44 @@
+k = 10
+
+KNN_ROOT: FPL_models/knn_models
+valid xy: 743 / 743
+Z_test shape: (743, 686)
+used scaler: FPL_models/knn_models/knn_hog_scaler_pca128.pkl
+used pca   : FPL_models/knn_models/knn_hog_pca_pca128.pkl
+
+=== Road KNN Distance Report (sorted by mean) ===
+samildaero      | n=  66 | mean=0.000 | median=0.000 | p90=0.000
+samildaero_32   | n=  79 | mean=0.000 | median=0.000 | p90=0.000
+samildaero_26   | n=  26 | mean=0.211 | median=0.156 | p90=0.405
+samildaero_28   | n=  38 | mean=0.607 | median=0.659 | p90=1.108
+samildaero_32_ga | n=  43 | mean=0.614 | median=0.598 | p90=1.211
+donhwamunro_11  | n=  43 | mean=1.026 | median=0.988 | p90=1.880
+donhwamunro_11_da | n=  58 | mean=1.080 | median=1.013 | p90=1.892
+suporo_28       | n=  97 | mean=1.122 | median=1.137 | p90=1.594
+donhwamunro     | n=  62 | mean=1.142 | median=1.192 | p90=1.803
+samildaero_30   | n=  59 | mean=1.258 | median=1.229 | p90=2.241
+donhwamunro_11_na | n= 100 | mean=1.351 | median=1.111 | p90=2.568
+donhwamunro_11_ga | n=  72 | mean=1.524 | median=1.564 | p90=2.683
+
+=== Detail KNN Distance Report (sorted by mean) ===
+suporo_28       | detail=E | n=  10 | mean=0.000 | median=0.000 | p90=0.000 | Δmean_vs_road=+1.572 | Δmed_vs_road=+1.587
+donhwamunro_11_na | detail=C | n=  18 | mean=0.000 | median=0.000 | p90=0.000 | Δmean_vs_road=+1.196 | Δmed_vs_road=+1.116
+donhwamunro_11_na | detail=D | n=  17 | mean=0.308 | median=0.196 | p90=0.622 | Δmean_vs_road=+1.640 | Δmed_vs_road=+1.865
+donhwamunro_11_ga | detail=C | n=  29 | mean=0.343 | median=0.101 | p90=1.000 | Δmean_vs_road=+1.186 | Δmed_vs_road=+1.535
+donhwamunro_11_da | detail=C | n=  12 | mean=0.352 | median=0.136 | p90=0.797 | Δmean_vs_road=+1.480 | Δmed_vs_road=+1.689
+suporo_28       | detail=C | n=  12 | mean=0.386 | median=0.378 | p90=0.684 | Δmean_vs_road=+0.213 | Δmed_vs_road=+0.147
+donhwamunro_11_da | detail=A | n=  30 | mean=0.388 | median=0.390 | p90=0.599 | Δmean_vs_road=+0.405 | Δmed_vs_road=+0.289
+donhwamunro_11_ga | detail=A | n=  16 | mean=0.435 | median=0.381 | p90=0.655 | Δmean_vs_road=+2.044 | Δmed_vs_road=+2.166
+donhwamunro_11_da | detail=B | n=  16 | mean=0.441 | median=0.334 | p90=0.996 | Δmean_vs_road=+0.613 | Δmed_vs_road=+0.679
+suporo_28       | detail=D | n=  20 | mean=0.449 | median=0.450 | p90=0.633 | Δmean_vs_road=+0.524 | Δmed_vs_road=+0.577
+donhwamunro_11_na | detail=B | n=  42 | mean=0.451 | median=0.487 | p90=0.698 | Δmean_vs_road=+0.427 | Δmed_vs_road=+0.422
+suporo_28       | detail=B | n=  20 | mean=0.526 | median=0.500 | p90=0.664 | Δmean_vs_road=+0.630 | Δmed_vs_road=+0.658
+donhwamunro_11_ga | detail=B | n=  27 | mean=0.693 | median=0.745 | p90=1.230 | Δmean_vs_road=+0.259 | Δmed_vs_road=-0.050
+donhwamunro_11_na | detail=A | n=  23 | mean=0.737 | median=0.499 | p90=1.458 | Δmean_vs_road=+1.159 | Δmed_vs_road=+1.271
+suporo_28       | detail=A | n=  35 | mean=0.905 | median=1.030 | p90=1.430 | Δmean_vs_road=+0.332 | Δmed_vs_road=+0.227
+
+=== Summary ===
+roads evaluated : 12
+details evaluated: 15
+
+

@@ -1,0 +1,29 @@
+캐시 로드: 다음부터는 이거만 실행
+
+import os, sys
+sys.path.insert(0, os.path.abspath("src"))
+
+from cache_io import load_cache_bundle, flatten_blocks
+
+CACHE_DIR = "/home/hanseong/gdrive/ML_FPL_cache"
+
+train_blocks, test_blocks, meta, manifest = load_cache_bundle(CACHE_DIR)
+
+Training_origin_data = flatten_blocks(train_blocks)
+Test_data = flatten_blocks(test_blocks)
+
+training_road_label = meta["training_road_label"]
+test_road_label     = meta["test_road_label"]
+
+training_photo_id = meta["training_photo_id"]
+test_photo_id     = meta["test_photo_id"]
+
+training_detail = meta["training_detail"]
+test_detail     = meta["test_detail"]
+
+training_filename = meta["training_filename"]
+test_filename     = meta["test_filename"]
+
+print("loaded cache:", manifest["bundle_name"])
+print("Train images:", len(Training_origin_data), "Test images:", len(Test_data))
+print("Train sample shapes:", {Training_origin_data[i].shape for i in range(3)})

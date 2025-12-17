@@ -1,0 +1,8 @@
+{
+  "road": "samildaero_32",
+  "level": "road",
+  "feature_tag": "full",
+  "n": 229,
+  "n_neighbors": 10,
+  "pca_dim_actual": 128
+}

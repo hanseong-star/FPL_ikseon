@@ -1,0 +1,152 @@
+# HOG
+X_hog_train = extract_hog_3x3(
+    Training_origin_data,
+    hog_size=(128, 128),
+    orientations=9,
+    pixels_per_cell=(8, 8),
+    cells_per_block=(2, 2)
+)
+X_hog_test = extract_hog_3x3(
+    Test_data,
+    hog_size=(128, 128),
+    orientations=9,
+    pixels_per_cell=(8, 8),
+    cells_per_block=(2, 2)
+)
+
+print("X_hog_train:", X_hog_train.shape)
+print("X_hog_test :", X_hog_test.shape)
+
+# Color (H,S)
+X_color_train = extract_color_hs_3x3(Training_origin_data, h_bins=30, s_bins=32)
+X_color_test  = extract_color_hs_3x3(Test_data, h_bins=30, s_bins=32)
+
+print("X_color_train:", X_color_train.shape)
+print("X_color_test :", X_color_test.shape)
+
+
+color_svm = train_color_svm(X_color_train, y_train_road, C=10, gamma="scale")
+P_color_test = color_svm.predict_proba(X_color_test)
+
+print("P_color_test:", P_color_test.shape)
+
+# 1) test 예측 라벨 (확률이 가장 큰 클래스)
+y_pred_color = np.argmax(P_color_test, axis=1)
+
+# 2) 정확도
+acc_color = eval_accuracy(y_test_road, y_pred_color)
+print("Color SVM Test Accuracy:", acc_color)
+
+# 3) confusion matrix + report
+cm_color = eval_confusion(y_test_road, y_pred_color)
+print("\nColor SVM Confusion Matrix:\n", cm_color)
+
+print("\nColor SVM Classification Report:\n")
+print(eval_report(y_test_road, y_pred_color))
+
+
+P_color_test: (743, 12)
+Color SVM Test Accuracy: 0.7254374158815612
+
+Color SVM Confusion Matrix:
+ [[49  1  0  0  6  0  0  0  2  2  2  0]
+ [ 2 35  0  0  1  0  0  2  0  0  1  2]
+ [ 0  0 39  1  3  2  2  1  1  1  0  8]
+ [ 2  0  0 44 11  3  0  0  2  3  5  2]
+ [ 1  1  5  9 65  3  0  0  4  5  6  1]
+ [ 2  1  2  1  1 51  0  1  0  3  2  2]
+ [ 0  1  1  2  0  0 21  1  0  0  0  0]
+ [ 0  3  1  2  2  1  0 25  0  1  1  2]
+ [ 0  2  0  0  4  1  0  1 47  3  0  1]
+ [ 1  0  0  2  8  4  0  2  3 58  0  1]
+ [ 0  0  1  2  6  3  0  0  1  2 27  1]
+ [ 2  1  2  3  5  1  3  0  0  0  2 78]]
+
+Color SVM Classification Report:
+
+              precision    recall  f1-score   support
+
+           0     0.8305    0.7903    0.8099        62
+           1     0.7778    0.8140    0.7955        43
+           2     0.7647    0.6724    0.7156        58
+           3     0.6667    0.6111    0.6377        72
+...
+    accuracy                         0.7254       743
+   macro avg     0.7362    0.7282    0.7312       743
+weighted avg     0.7285    0.7254    0.7260       743
+
+
+
+PCA_DIMS = [16, 32, 64, 1024]  # 원하는 대로 조절
+
+hog_pack = train_hog_pca_svm_by_dims(
+    X_train=X_hog_train,
+    y_train=y_train_road,
+    X_test=X_hog_test,
+    y_test=y_test_road,
+    pca_dims=PCA_DIMS,
+    C=10,
+    gamma="scale"
+)
+
+hog_svm_models = hog_pack["hog_svm_models"]
+hog_pca_test_features = hog_pack["hog_pca_test_features"]
+hog_test_acc = hog_pack["test_acc"]
+hog_time_report = hog_pack["time_report"]
+
+print("\n===== HOG+PCA SVM summary =====")
+for d in PCA_DIMS:
+    tr = hog_time_report[d]
+    print(
+        f"PCA {d:>3d} | "
+        f"Test Acc={hog_test_acc[d]:.4f} | "
+        f"scale={tr['scale_sec']:.3f}s pca={tr['pca_sec']:.3f}s svm={tr['svm_fit_sec']:.3f}s total={tr['total_sec']:.3f}s"
+    )
+
+
+
+===== HOG+PCA SVM summary =====
+PCA  16 | Test Acc=0.4886 | scale=2.652s pca=1.285s svm=1.027s total=5.152s
+PCA  32 | Test Acc=0.5343 | scale=2.061s pca=1.138s svm=1.065s total=4.470s
+PCA  64 | Test Acc=0.5222 | scale=1.568s pca=1.681s svm=1.163s total=4.659s
+PCA 1024 | Test Acc=0.3580 | scale=1.323s pca=14.179s svm=8.106s total=26.520s
+
+
+ALPHA = 0.5  # 형태쪽 가중치(원하면 0.6~0.9로 실험)
+
+Fusion (PCA=16) Test Acc: 0.7456
+Fusion (PCA=32) Test Acc: 0.7402
+Fusion (PCA=64) Test Acc: 0.7362
+Fusion (PCA=1024) Test Acc: 0.6703
+
+Best PCA dim: 16 Best Fusion Test Acc: 0.7456258411843876
+
+Confusion Matrix:
+ [[52  2  0  0  4  1  0  0  1  0  2  0]
+ [ 2 32  0  1  2  1  0  2  0  0  2  1]
+ [ 0  0 39  3  3  1  0  1  0  1  0 10]
+ [ 0  0  1 46 12  3  0  0  2  2  2  4]
+ [ 1  1  3  8 69  4  0  0  4  3  4  3]
+ [ 3  1  2  1  2 51  0  0  0  2  2  2]
+ [ 0  1  1  2  0  0 21  1  0  0  0  0]
+ [ 1  1  1  0  5  1  0 26  1  1  0  1]
+ [ 0  2  0  0  4  1  0  0 48  3  0  1]
+ [ 3  0  2  1  7  2  0  1  3 59  0  1]
+ [ 2  0  0  1  4  2  0  0  2  3 28  1]
+ [ 1  0  1  1  9  0  2  0  0  0  0 83]]
+
+Classification Report:
+
+              precision    recall  f1-score   support
+
+           0     0.8000    0.8387    0.8189        62
+           1     0.8000    0.7442    0.7711        43
+           2     0.7800    0.6724    0.7222        58
+           3     0.7188    0.6389    0.6765        72
+           4     0.5702    0.6900    0.6244       100
+           5     0.7612    0.7727    0.7669        66
+           6     0.9130    0.8077    0.8571        26
+...
+    accuracy                         0.7456       743
+   macro avg     0.7702    0.7430    0.7542       743
+weighted avg     0.7518    0.7456    0.7464       743

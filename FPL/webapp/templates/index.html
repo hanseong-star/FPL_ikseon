@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>FPL</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    .topbar { font-size: 28px; font-weight: 800; margin-bottom: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; margin: 12px 0; }
+    .row { display:flex; gap:16px; flex-wrap: wrap; }
+    img { border-radius: 10px; max-width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+  <div class="topbar">FPL</div>
+
+  <form action="/predict" method="post" enctype="multipart/form-data" class="card">
+    <input type="file" name="image" accept="image/*" required>
+    <button type="submit">예측하기</button>
+  </form>
+
+  {% if result %}
+    <div class="card">
+      {% if result.error %}
+        <b style="color:red">{{ result.error }}</b>
+      {% else %}
+        <div class="row">
+          <div>
+            <div><b>업로드 이미지</b></div>
+            <img src="{{ result.upload_image }}">
+          </div>
+        </div>
+
+        <h3>TOP3 도로명</h3>
+        <ol>
+          {% for item in result.top3 %}
+            <div>
+              {{ item.rank }}위 - {{ item.road }} : {{ "%.4f"|format(item.prob) }}
+            </div>
+          {% endfor %}
+        </ol>
+
+        <h3>후보별 위치 + 유사 이미지</h3>
+        {% for rr in result.roads %}
+          <div class="card">
+            <div><b>{{ rr.road }}</b> ({{ '%.2f'|format(rr.prob * 100) }}%)</div>
+            <div>좌표(x,y): {{ rr.xy if rr.xy else '-' }}</div>
+            {% if rr.similar_image %}
+              <div style="margin-top:8px;"><b>유사 이미지</b></div>
+              <img src="{{ rr.similar_image }}">
+            {% else %}
+              <div style="margin-top:8px; color:#666;">유사 이미지 없음(경로 저장/파일 존재 확인)</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  {% endif %}
+</body>
+</html>
