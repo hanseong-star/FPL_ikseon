@@ -2,6 +2,7 @@
 import os, sys, base64
 from pathlib import Path
 import re
+import traceback
 
 import numpy as np
 import cv2
@@ -18,6 +19,7 @@ sys.path.insert(0, str(SRC))                   # src 폴더를 import 경로로
 
 
 sys.path.insert(0, str(ROOT))
+
 from src.fpl_data_io import resize_keep_direction
 from src.fpl_features import extract_color_hs_3x3, extract_hog_3x3
 
@@ -28,6 +30,61 @@ from src.fpl_features import extract_color_hs_3x3, extract_hog_3x3
 app = Flask(__name__)
 
 DETAIL_ROADS = {"donhwamunro_11_ga", "donhwamunro_11_na", "donhwamunro_11_da", "suporo_28"}
+
+
+import numpy as np
+
+def _sigmoid(z):
+    return 1.0 / (1.0 + np.exp(-z))
+
+def predict_proba_custom(svm, X, calibrator=None, power=1.0):
+    """
+    svm: sklearn SVC(probability=False 여도 OK)
+    calibrator: dict with keys ['a','b','classes', ...]
+    return: (N, K) probability
+    """
+    scores = svm.decision_function(X)
+
+    # binary면 (N,) 로 나올 수 있어서 (N,2) 형태로 맞춰줌
+    if scores.ndim == 1:
+        # sklearn SVC binary decision_function은 class1에 대한 score 1개만 줌
+        # -> 두 클래스 확률로 만들기 위해 [-score, +score]로 확장
+        scores = np.vstack([-scores, scores]).T  # (N,2)
+
+    N, K = scores.shape
+
+    if calibrator is None:
+        raise RuntimeError("calibrator dict is required for probability output (predict_proba_custom).")
+
+    a = np.asarray(calibrator.get("a", 1.0), dtype=np.float64)
+    b = np.asarray(calibrator.get("b", 0.0), dtype=np.float64)
+
+    # a,b가 스칼라이면 broadcast, 벡터면 (K,)로 맞추기
+    if a.ndim == 0: a = np.full((K,), float(a))
+    if b.ndim == 0: b = np.full((K,), float(b))
+
+    a = a.reshape(1, -1)  # (1,K)
+    b = b.reshape(1, -1)  # (1,K)
+
+    # Platt sigmoid: p = 1 / (1 + exp(a*score + b))
+    # (너 dict 구조상 a,b를 이렇게 쓰는 형태가 가장 자연스러움)
+    P = 1.0 / (1.0 + np.exp(a * scores + b))
+
+    # optional clip (p_lo/p_hi 있으면)
+    p_lo = calibrator.get("p_lo", None)
+    p_hi = calibrator.get("p_hi", None)
+    if p_lo is not None and p_hi is not None:
+        P = np.clip(P, float(p_lo), float(p_hi))
+
+    # optional sharpening
+    if power is not None and float(power) != 1.0:
+        P = np.power(P, float(power))
+
+    # row normalize (K-class)
+    row_sum = P.sum(axis=1, keepdims=True) + 1e-12
+    P = P / row_sum
+    return P
+
 
 
 # =========================
@@ -86,68 +143,138 @@ def reorder_proba(P, from_classes, to_classes):
         idx.append(int(pos[0]))
     return P[:, idx]
 
-
 # =========================
 # (D) 서비스 클래스 (모델 로드 + 예측)
 # =========================
-class FPLService:
+class FPLService: 
+
     def __init__(self, model_dir, best_dim=128, alpha_shape=0.389):
+        self.hog_cal = None
+        self.color_cal = None  
+        # =========================
+        # 0) 기본 멤버 먼저 세팅
+        # =========================
         self.model_dir = Path(model_dir)
         self.best_dim = int(best_dim)
         self.alpha_shape = float(alpha_shape)
+        # ---- Fusion LR 로드
+        p_fusion = self.model_dir / f"fusion_lr_dim{self.best_dim}.pkl"
+        if not p_fusion.exists():
+            raise FileNotFoundError(f"fusion LR not found: {p_fusion}")
 
-        # ---- (1) Road 분류 모델
-        self.color_svm = joblib.load(self.model_dir / "color_svm.pkl")
-        self.hog_svm = joblib.load(self.model_dir / f"hog_svm_dim{self.best_dim}.pkl")
-        self.hog_pca = joblib.load(self.model_dir / f"hog_pca_dim{self.best_dim}.pkl")
-        self.hog_scaler = joblib.load(self.model_dir / f"hog_scaler_dim{self.best_dim}.pkl")
-        self.fusion_lr = joblib.load(self.model_dir / f"fusion_lr_dim{self.best_dim}.pkl")
+        self.fusion_lr = joblib.load(p_fusion)
 
+
+        # (중요) attribute error 방지용 초기화
+        self.hog_cal = None
+        self.color_cal = None
+        self.hog_svm = None
+        self.color_svm = None
+        self.fusion_lr = None
+        self.road_classes = None
+
+        # =========================
+        # 1) label map 로드
+        # =========================
         self.road_label_map = joblib.load(self.model_dir / "road_label_map.pkl")
         self.inv_road = inv_map_from_label_map(self.road_label_map)
-                # ===== sanity check: classes_ alignment =====
-        self.road_classes = np.asarray(self.fusion_lr.classes_)  # LR 출력 클래스 순서
 
+        # =========================
+        # 2) Road 모델 로드 (HOG/Color/Fusion)
+        # =========================
+        # HOG pipeline
+        self.hog_pca    = joblib.load(self.model_dir / f"hog_pca_dim{self.best_dim}.pkl")
+        self.hog_scaler = joblib.load(self.model_dir / f"hog_scaler_dim{self.best_dim}.pkl")
+
+        # HOG calibrator (있으면 우선)
+        hog_cal_path = self.model_dir / f"hog_cal_dim{self.best_dim}.pkl"
+        if hog_cal_path.exists():
+            self.hog_cal = joblib.load(hog_cal_path)
+
+        # HOG SVM fallback (있으면 로드)
+        hog_svm_path = self.model_dir / f"hog_svm_dim{self.best_dim}.pkl"
+        if hog_svm_path.exists():
+            self.hog_svm = joblib.load(hog_svm_path)
+
+        # Color calibrator (있으면 우선)
+        color_cal_path = self.model_dir / "color_cal.pkl"
+        if color_cal_path.exists():
+            self.color_cal = joblib.load(color_cal_path)
+
+        # Color SVM fallback (항상 로드 시도)
+        self.color_svm = joblib.load(self.model_dir / "color_svm.pkl")
+
+        # Fusion LR (항상 필요)
+        self.fusion_lr = joblib.load(self.model_dir / f"fusion_lr_dim{self.best_dim}.pkl")
+        self.road_classes = np.asarray(self.fusion_lr.classes_)
+
+        # =========================
+        # 3) classes_ sanity check (로드 후에만!)
+        # =========================
         def _warn_classes(name, classes_arr):
+            if classes_arr is None:
+                print(f"[WARN] {name} is None")
+                return
+            if self.road_classes is None:
+                print("[WARN] road_classes is None (fusion_lr not loaded?)")
+                return
             if not np.array_equal(np.asarray(classes_arr), self.road_classes):
                 print(f"[WARN] {name}.classes_ != fusion_lr.classes_")
                 print("  ", name, ":", list(classes_arr))
                 print("  fusion_lr:", list(self.road_classes))
 
-        _warn_classes("hog_svm", self.hog_svm.classes_)
-        _warn_classes("color_svm", self.color_svm.classes_)
+        # HOG classes source
+        if self.hog_cal is not None and hasattr(self.hog_cal, "classes_"):
+            _warn_classes("hog_cal", self.hog_cal.classes_)
+        elif self.hog_svm is not None and hasattr(self.hog_svm, "classes_"):
+            _warn_classes("hog_svm", self.hog_svm.classes_)
+        else:
+            print("[WARN] Neither hog_cal nor hog_svm is available.")
+
+        # Color classes source
+        if self.color_cal is not None and hasattr(self.color_cal, "classes_"):
+            _warn_classes("color_cal", self.color_cal.classes_)
+        elif self.color_svm is not None and hasattr(self.color_svm, "classes_"):
+            _warn_classes("color_svm", self.color_svm.classes_)
+        else:
+            print("[WARN] color_svm is not available?")
 
         # inv_road 커버리지 체크
         missing = [int(c) for c in self.road_classes if int(c) not in self.inv_road]
         if missing:
             print("[WARN] inv_road missing class ids:", missing)
 
-
-        # ---- (2) KNN root + KNN용 scaler/pca 자동 탐색 로드
-        self.knn_root = self.model_dir / "knn_models"
+        # =========================
+        # 4) KNN root + KNN용 scaler/pca 자동 탐색 로드
+        # =========================*
+# ---- (2) KNN root + KNN용 scaler/pca 로드 (best_dim 고정)
+        self.knn_root = self.model_dir / "knn_models_patch3x3"  # 네가 쓰는 버전 우선
+        if not self.knn_root.exists():
+            self.knn_root = self.model_dir / "knn_models"
         if not self.knn_root.exists():
             raise FileNotFoundError(f"KNN root not found: {self.knn_root}")
 
-        self.knn_hog_scaler = None
-        self.knn_hog_pca = None
-        for fn in os.listdir(self.knn_root):
-            if fn.startswith("knn_hog_scaler_") and fn.endswith(".pkl"):
-                self.knn_hog_scaler = joblib.load(self.knn_root / fn)
-            if fn.startswith("knn_hog_pca_") and fn.endswith(".pkl"):
-                self.knn_hog_pca = joblib.load(self.knn_root / fn)
-        if self.knn_hog_scaler is None or self.knn_hog_pca is None:
-            raise FileNotFoundError("KNN scaler/pca not found under knn_root")
+        # ✅ best_dim에 맞는 파일명을 "정확히" 찍어서 로드
+        p_scal = self.knn_root / f"knn_hog_scaler_pca{self.best_dim}.pkl"
+        p_pca  = self.knn_root / f"knn_hog_pca_pca{self.best_dim}.pkl"
 
-        # ---- (3) detail SVM 모델 로드(있으면 사용)
-        # 저장 규칙(유연하게 탐색):
-        # FPL_models/detail_models/<road>/
-        #   detail_color_svm.pkl or color_svm.pkl
-        #   detail_hog_svm.pkl   or hog_svm.pkl
-        #   detail_hog_scaler.pkl or hog_scaler.pkl
-        #   detail_hog_pca.pkl    or hog_pca.pkl
-        #   detail_label_map.pkl  or label_map.pkl
+        if not p_scal.exists() or not p_pca.exists():
+            # fallback: 폴더 내에서 dim 문자열 포함된 것 찾기
+            want = f"dim{self.best_dim}"
+            cand_scal = [fn for fn in os.listdir(self.knn_root) if fn.startswith("knn_hog_scaler_") and want in fn and fn.endswith(".pkl")]
+            cand_pca  = [fn for fn in os.listdir(self.knn_root) if fn.startswith("knn_hog_pca_") and want in fn and fn.endswith(".pkl")]
+            if not cand_scal or not cand_pca:
+                raise FileNotFoundError(f"KNN scaler/pca for {want} not found under {self.knn_root}")
+            p_scal = self.knn_root / cand_scal[0]
+            p_pca  = self.knn_root / cand_pca[0]
+
+        self.knn_hog_scaler = joblib.load(p_scal)
+        self.knn_hog_pca    = joblib.load(p_pca)
+        # =========================
+        # 5) detail SVM 모델 로드(있으면 사용)
+        # =========================
         self.detail_models = {}
-        detail_root = self.model_dir / "detail_models"
+        detail_root = self.model_dir / "detail_models_patch3x3"
         if detail_root.exists():
             for r in DETAIL_ROADS:
                 rdir = detail_root / r
@@ -166,6 +293,8 @@ class FPLService:
                 p_scal  = pick("detail_hog_scaler.pkl", "hog_scaler.pkl")
                 p_pca   = pick("detail_hog_pca.pkl", "hog_pca.pkl")
                 p_map   = pick("detail_label_map.pkl", "label_map.pkl")
+                p_cals = pick("detail_color_cal_sigmoid.pkl")
+                p_hcals = pick("detail_hog_cal_sigmoid.pkl")
 
                 if all([p_color, p_hog, p_scal, p_pca, p_map]):
                     self.detail_models[r] = {
@@ -174,7 +303,11 @@ class FPLService:
                         "hog_scaler": joblib.load(p_scal),
                         "hog_pca": joblib.load(p_pca),
                         "label_map": joblib.load(p_map),
+                        "color_cal": joblib.load(p_cals) if p_cals else None,  
+                        "hog_cal": joblib.load(p_hcals) if p_hcals else None,   
                     }
+
+    
 
     # ---- 단일 이미지 전처리
     def preprocess_img(self, img_bgr):
@@ -185,61 +318,90 @@ class FPLService:
     # ---- 단일 이미지 feature (HOG raw, Color)
     def features_one(self, img_float01):
         X_hog = extract_hog_3x3([img_float01], hog_size=(128, 128),
-                                orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2))
-        X_col = extract_color_hs_3x3([img_float01], h_bins=30, s_bins=32)
+                                orientations=12, pixels_per_cell=(8, 8), cells_per_block=(2, 2))
+        X_col = extract_color_hs_3x3([img_float01], h_bins=45, s_bins=48)
+
         return X_hog, X_col
 
     # ---- road TOP3
-    def predict_roads_top3(self, X_hog_raw, X_color):
-        P_color = self.color_svm.predict_proba(X_color)  # (1,K)
+    def predict_roads_top3(self, X_hog_raw, X_col):
+        # ---- Color proba (calibrator 우선)
+        # ---- Color proba (calibrator 우선/강제)
+        # ---- Color proba  
+        if self.color_cal is not None and hasattr(self.color_cal, "predict_proba"):
+            # sklearn calibrator
+            P_color_raw = self.color_cal.predict_proba(X_col)
+            color_classes = np.asarray(self.color_cal.classes_)
 
+        elif isinstance(self.color_cal, dict):
+            # dict calibrator (Platt params)
+            P_color_raw = predict_proba_custom(self.color_svm, X_col, calibrator=self.color_cal, power=1.0)
+            # ✅ dict에는 classes_가 없고 classes 키가 있음
+            color_classes = np.asarray(self.color_cal.get("classes", self.color_svm.classes_))
+
+        else:
+            raise RuntimeError("color_cal is missing/invalid. Expected sklearn calibrator or dict.")
+
+
+        # ---- HOG proba
         Xh_s = self.hog_scaler.transform(X_hog_raw)
         Xh_p = self.hog_pca.transform(Xh_s)
-        P_shape_raw = self.hog_svm.predict_proba(Xh_p)
-        P_color_raw = self.color_svm.predict_proba(X_color)
 
-        # ===== (중요) LR이 기대하는 클래스 순서(self.road_classes)로 확률 열 정렬 =====
+        if self.hog_cal is not None and hasattr(self.hog_cal, "predict_proba"):
+            P_shape_raw = self.hog_cal.predict_proba(Xh_p)
+            hog_classes = np.asarray(self.hog_cal.classes_)
+
+        elif isinstance(self.hog_cal, dict):
+            P_shape_raw = predict_proba_custom(self.hog_svm, Xh_p, calibrator=self.hog_cal, power=1.0)
+            hog_classes = np.asarray(self.hog_cal.get("classes", self.hog_svm.classes_))
+
+        else:
+            raise RuntimeError("hog_cal is missing/invalid. Expected sklearn calibrator or dict.")
+
+
+        # ---- LR이 기대하는 클래스 순서(self.road_classes)로 열 정렬
         P_shape = P_shape_raw
         P_color = P_color_raw
 
-        if not np.array_equal(self.hog_svm.classes_, self.road_classes):
-            P_shape = reorder_proba(P_shape_raw, self.hog_svm.classes_, self.road_classes)
+        if not np.array_equal(hog_classes, self.road_classes):
+            P_shape = reorder_proba(P_shape_raw, hog_classes, self.road_classes)
 
-        if not np.array_equal(self.color_svm.classes_, self.road_classes):
-            P_color = reorder_proba(P_color_raw, self.color_svm.classes_, self.road_classes)
+        if not np.array_equal(color_classes, self.road_classes):
+            P_color = reorder_proba(P_color_raw, color_classes, self.road_classes)
 
-        X_fuse = np.hstack([P_shape, P_color])
-        P_fuse = self.fusion_lr.predict_proba(X_fuse)
+        # ---- Fusion
+        # X_fuse = np.hstack([P_shape, P_color])
+        # P_fuse = self.fusion_lr.predict_proba(np.hstack([P_shape, P_color]))
+        P_fuse = self.alpha_shape * P_shape + (1.0 - self.alpha_shape) * P_color
 
-        classes = self.fusion_lr.classes_  # (== self.road_classes)
+
+        classes = self.fusion_lr.classes_
         top3 = proba_topk(P_fuse, classes, self.inv_road, k=3)
 
-        # ===== 확률-라벨 매칭 디버그 체크 =====
+        # (디버그) 확률합 체크
         s = float(P_fuse[0].sum())
-        best_j = int(np.argmax(P_fuse[0]))
-        best_c = int(classes[best_j])
-        best_road = self.inv_road.get(best_c, str(best_c))
-
-        if len(top3) > 0 and top3[0]["road"] != best_road:
-            print("[BUG?] top3[0] road mismatch with argmax mapping!")
-            print("  top3[0] =", top3[0], "argmax_road =", best_road, "argmax_class_id =", best_c)
-
         if abs(s - 1.0) > 1e-3:
             print(f"[WARN] fusion prob sum != 1 : sum={s:.6f}")
 
         return top3, P_fuse
 
+
     # ---- detail 예측(있으면)
-    def predict_detail_if_any(self, road, X_hog_raw, X_color):
+    def predict_detail_if_any(self, road, X_hog_raw, X_col):
+
         if road not in self.detail_models:
             return None, None
 
         m = self.detail_models[road]
-        P_c = m["color"].predict_proba(X_color)
+
+        print("[DEBUG] detail color expects:", m["color"].n_features_in_, "X_color:", X_col.shape[1])
+        # detail color proba (dict calibrator)
+        Xc = X_col
+        P_c = predict_proba_custom(m["color"], Xc, calibrator=m.get("color_cal"), power=1.0)
 
         Xh_s = m["hog_scaler"].transform(X_hog_raw)
         Xh_p = m["hog_pca"].transform(Xh_s)
-        P_h = m["hog"].predict_proba(Xh_p)
+        P_h = predict_proba_custom(m["hog"], Xh_p, calibrator=m.get("hog_cal"), power=1.0)
 
         # 동일 가중치(형태 비중 alpha_shape)
         P = self.alpha_shape * P_h + (1.0 - self.alpha_shape) * P_c
@@ -332,7 +494,8 @@ def get_service():
 
     MODEL_DIR = str(ROOT / "FPL_models")
     BEST_DIM = int(os.environ.get("FPL_BEST_DIM", "128"))
-    ALPHA_SHAPE = float(os.environ.get("FPL_ALPHA_SHAPE", "0.389"))  # ✅ 3.89가 아니라 0.389
+    ALPHA_SHAPE = float(os.environ.get("FPL_ALPHA_SHAPE", "0.389"))  
+    ALPHA_SHAPE = float(0.001)  # 테스트용 고정
 
     SERVICE = FPLService(
         model_dir=MODEL_DIR,
@@ -353,9 +516,10 @@ def index():
 def predict():
     svc = get_service()
 
-    f = request.files.get("image")
+    # ✅ add.py / html 둘 다 대응
+    f = request.files.get("image") or request.files.get("file")
     if f is None or f.filename.strip() == "":
-        return render_template("index.html", result={"error": "이미지를 업로드해줘."})
+        return render_template("index.html", result={"error": f"이미지 업로드 실패. keys={list(request.files.keys())}"})
 
     data = np.frombuffer(f.read(), dtype=np.uint8)
     img_bgr = cv2.imdecode(data, cv2.IMREAD_COLOR)
@@ -423,5 +587,4 @@ def predict():
 
 
 if __name__ == "__main__":
-    # 로컬에서만 접속 가능(나만)
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host="127.0.0.1", port=5000, debug=True)

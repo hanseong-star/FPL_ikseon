@@ -1,0 +1,8 @@
+{
+  "road": "suporo_28",
+  "level": "road",
+  "feature_tag": "FULL64",
+  "n": 296,
+  "n_neighbors": 10,
+  "pca_dim_actual": 64
+}

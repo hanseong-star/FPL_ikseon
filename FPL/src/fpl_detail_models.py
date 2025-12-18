@@ -3,6 +3,8 @@ import os, json
 import numpy as np
 import joblib
 
+from src.fpl_models import fit_sigmoid_calibrator
+
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -123,10 +125,13 @@ def train_and_save_detail_models(
             kernel="rbf",
             C=C,
             gamma=gamma,
-            probability=True,
+            probability=False,
             random_state=42,
         )
         color_svm.fit(Xc, y_detail)
+
+        cal_color = fit_sigmoid_calibrator(color_svm, Xc, y_detail,
+                                  q_lo=0.10, q_hi=0.90, p_lo=0.05, p_hi=0.95)
 
         # 2) HOG SVM: scaler + PCA + SVM
         scaler = StandardScaler()
@@ -144,10 +149,13 @@ def train_and_save_detail_models(
             kernel="rbf",
             C=C,
             gamma=gamma,
-            probability=True,
+            probability=False,
             random_state=42,
         )
         hog_svm.fit(Xh_p, y_detail)
+
+        cal_hog = fit_sigmoid_calibrator(hog_svm, Xh_p, y_detail,
+                                q_lo=0.10, q_hi=0.90, p_lo=0.05, p_hi=0.95)
 
         # 3) 저장
         road_dir = os.path.join(detail_root, road)
@@ -158,6 +166,9 @@ def train_and_save_detail_models(
         joblib.dump(scaler,           os.path.join(road_dir, "detail_hog_scaler.pkl"))
         joblib.dump(pca,              os.path.join(road_dir, "detail_hog_pca.pkl"))
         joblib.dump(detail_label_map, os.path.join(road_dir, "detail_label_map.pkl"))
+        joblib.dump(cal_color, os.path.join(road_dir, "detail_color_cal_sigmoid.pkl"))
+        joblib.dump(cal_hog,   os.path.join(road_dir, "detail_hog_cal_sigmoid.pkl"))
+
 
         meta = {
             "road": road,
@@ -171,6 +182,7 @@ def train_and_save_detail_models(
             "alpha_shape_for_runtime_fusion": float(alpha_shape),
             "min_samples_per_detail": int(min_samples_per_detail),
         }
+        meta["prob_method"] = "sigmoid"
         with open(os.path.join(road_dir, "meta.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
 

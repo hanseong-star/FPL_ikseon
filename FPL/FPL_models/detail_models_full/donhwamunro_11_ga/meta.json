@@ -1,0 +1,17 @@
+{
+  "road": "donhwamunro_11_ga",
+  "feature_tag": "full",
+  "details": [
+    "A",
+    "B",
+    "C"
+  ],
+  "n_total_road": 213,
+  "n_used_detail": 213,
+  "hog_pca_dim_actual": 128,
+  "C": 10.0,
+  "gamma": "scale",
+  "alpha_shape_for_runtime_fusion": 0.39819920743149,
+  "min_samples_per_detail": 8,
+  "prob_method": "sigmoid"
+}

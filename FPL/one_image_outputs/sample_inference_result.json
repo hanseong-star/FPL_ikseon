@@ -1,0 +1,93 @@
+{
+  "image": "/home/hanseong/sample.jpg",
+  "saved_resized_image": "one_image_outputs/sample_resized_640x480.jpg",
+  "saved_color_feature": "one_image_outputs/sample_color3x3_HS_30x32.npy",
+  "saved_hog_feature": "one_image_outputs/sample_hog3x3_128x128_ori9.npy",
+  "saved_hog_pca_feature": "one_image_outputs/sample_hog3x3_pca_dim128.npy",
+  "models": {
+    "color_svm": "FPL_models/color_svm.pkl",
+    "hog_svm": "FPL_models/hog_svm_dim128.pkl",
+    "hog_scaler": "FPL_models/hog_scaler_dim128.pkl",
+    "hog_pca": "FPL_models/hog_pca_dim128.pkl",
+    "fusion_lr": "FPL_models/fusion_lr_dim128.pkl",
+    "road_label_map": "FPL_models/road_label_map.pkl"
+  },
+  "notes": {
+    "hog_params": {
+      "hog_size_wh": [
+        128,
+        128
+      ],
+      "orientations": 9,
+      "pixels_per_cell": [
+        8,
+        8
+      ],
+      "cells_per_block": [
+        2,
+        2
+      ]
+    },
+    "color_params": {
+      "h_bins": 30,
+      "s_bins": 32
+    },
+    "fusion_order": "shape,color",
+    "class_order_same_between_color_and_hog": true,
+    "warning_if_false": "If class order differs, reorder probabilities before fusion."
+  },
+  "color_probs": {
+    "0": 0.004081793695698591,
+    "1": 0.0007879422279513814,
+    "2": 0.9334170785589329,
+    "3": 0.009710167062943805,
+    "4": 0.012669417855417517,
+    "5": 0.005579285058070002,
+    "6": 0.0072586801139480255,
+    "7": 0.001357632173802215,
+    "8": 0.003166422542176898,
+    "9": 0.0050303509009771595,
+    "10": 0.005186845381496802,
+    "11": 0.01175438442858473
+  },
+  "hog_shape_probs": {
+    "0": 0.0007807746032783517,
+    "1": 0.0033156083304182386,
+    "2": 0.8285256415351043,
+    "3": 0.015020425122213358,
+    "4": 0.02984081292678903,
+    "5": 0.004309315004512401,
+    "6": 0.01985942037355143,
+    "7": 0.003281624012465959,
+    "8": 0.010362475353422962,
+    "9": 0.0011514330217535238,
+    "10": 0.0018931409125315939,
+    "11": 0.08165932880395878
+  },
+  "fusion_probs": {
+    "0": 0.0014707247337086068,
+    "1": 0.002013260062135648,
+    "2": 0.9607138023958394,
+    "3": 0.004244298052519173,
+    "4": 0.008377032261789385,
+    "5": 0.005460171409048261,
+    "6": 0.002803015906614535,
+    "7": 0.003123676506402079,
+    "8": 0.0015210566813175371,
+    "9": 0.0020829529145625116,
+    "10": 0.001961996162356607,
+    "11": 0.006228012913706627
+  },
+  "top1_color": {
+    "pred": "2",
+    "prob": 0.9334170785589329
+  },
+  "top1_hog": {
+    "pred": "2",
+    "prob": 0.8285256415351043
+  },
+  "top1_fusion": {
+    "pred": "2",
+    "prob": 0.9607138023958394
+  }
+}

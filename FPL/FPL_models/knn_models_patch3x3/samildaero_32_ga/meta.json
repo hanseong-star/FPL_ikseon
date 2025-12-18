@@ -1,0 +1,8 @@
+{
+  "road": "samildaero_32_ga",
+  "level": "road",
+  "feature_tag": "patch3x3",
+  "n": 129,
+  "n_neighbors": 7,
+  "pca_dim_actual": 128
+}

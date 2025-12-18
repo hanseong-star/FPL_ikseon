@@ -1,0 +1,19 @@
+{
+  "road": "suporo_28",
+  "feature_tag": "full",
+  "details": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E"
+  ],
+  "n_total_road": 296,
+  "n_used_detail": 296,
+  "hog_pca_dim_actual": 128,
+  "C": 10.0,
+  "gamma": "scale",
+  "alpha_shape_for_runtime_fusion": 0.39819920743149,
+  "min_samples_per_detail": 8,
+  "prob_method": "sigmoid"
+}

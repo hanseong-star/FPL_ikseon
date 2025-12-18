@@ -1,0 +1,8 @@
+{
+  "road": "donhwamunro_11_da",
+  "level": "road",
+  "feature_tag": "patch3x3",
+  "n": 177,
+  "n_neighbors": 7,
+  "pca_dim_actual": 128
+}

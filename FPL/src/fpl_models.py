@@ -27,26 +27,19 @@ def encode_road_labels(train_roads, test_roads):
 # Train single-feature SVMs
 # -----------------------------
 def train_color_svm(X_train, y_train, C=10, gamma="scale"):
-    """
-    Color feature용 SVM
-    * decision_function_shape='ovr'로 둬야 decision score -> 확률 변환이 쉬움
-    """
-    svm = SVC(kernel="rbf", C=C, gamma=gamma,
-              probability=True, random_state=42,
-              decision_function_shape="ovr")
+    svm = SVC(
+        kernel="rbf",
+        C=C,
+        gamma=gamma,
+        probability=False,            
+        random_state=42,
+        decision_function_shape="ovr" 
+    )
     svm.fit(X_train, y_train)
     return svm
 
 
-def train_lbp_svm(X_train, y_train, C=10, gamma="scale"):
-    """
-    LBP feature용 SVM
-    """
-    svm = SVC(kernel="rbf", C=C, gamma=gamma,
-              probability=True, random_state=42,
-              decision_function_shape="ovr")
-    svm.fit(X_train, y_train)
-    return svm
+
 
 
 def train_hog_pca_svm_by_dims(X_train, y_train, X_test, y_test, pca_dims, C=10, gamma="scale"):
@@ -81,9 +74,13 @@ def train_hog_pca_svm_by_dims(X_train, y_train, X_test, y_test, pca_dims, C=10, 
 
         # 3) SVM fit
         t0 = time.perf_counter()
-        svm = SVC(kernel="rbf", C=C, gamma=gamma,
-                  probability=True, random_state=42,
-                  decision_function_shape="ovr")
+        svm = SVC(
+            kernel="rbf", C=C, gamma=gamma,
+            probability=False,            
+            random_state=42,
+            decision_function_shape="ovr"
+        )
+
         svm.fit(Xtr_p, y_train)
         t_svm = time.perf_counter() - t0
 
