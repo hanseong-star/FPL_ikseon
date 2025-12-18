@@ -33,21 +33,6 @@ The server will be available at:
 
  .http://127.0.0.1:5000/ .
 
----
-
-## 6. Test the Prediction Endpoint
-
-Example request using curl:
-
-bash .curl -X POST http://127.0.0.1:5000/predict .
-
-If the /predict endpoint expects an image file:
-
-bash .curl -X POST -F "file=@/path/to/image.jpg" http://127.0.0.1:5000/predict .
-
-Check app.py for the exact endpoint name and request format.
-
----
 
 
 
