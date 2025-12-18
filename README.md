@@ -5,68 +5,21 @@ Only app.py is intended to be executed for inference.
 
 ---
 
-## Recommended Environment
 
-- OS: Linux (Ubuntu recommended), macOS, Windows
-- Python: 3.10 (strongly recommended)
-
----
-
-## 1. Clone the Repository
+##  Clone the Repository
 
 bash .git clone https://github.com/hanseong-star/FPL_ikseon.git .cd FPL_ikseon .
 
 ---
 
-## 2. Create a Virtual Environment
 
-### Option A: Conda (Recommended)
-
-bash .conda create -n fpl python=3.10 -y .conda activate fpl .
-
-### Option B: venv
-
-bash .python3 -m venv .venv .source .venv/bin/activate .
-
----
-
-## 3. Install Dependencies
-
-### If requirements.txt exists
-
-bash .pip install -r requirements.txt .
-
-### If requirements.txt does NOT exist
-
-bash .pip install --upgrade pip .pip install flask numpy pandas scikit-learn joblib pillow opencv-python .
-
-If OpenCV causes GUI-related or display errors (common on servers):
-
-bash .pip install opencv-python-headless .
-
----
-
-## 4. Required Files Before Running app.py
+##  Required Files Before Running app.py
 
 Before running app.py, make sure all required model files and directories exist.
 
-Typical requirements include:
 
-- FPL_models/
- - trained model files (.pkl)
- - e.g. SVM, PCA, scaler, fusion models
-- Any additional folders or configuration files referenced inside app.py
 
-If you encounter FileNotFoundError:
-
-- Check whether paths are relative or absolute
-- Verify that filenames match exactly
-- Ensure models were trained correctly
- (e.g. SVC(probability=True) if predict_proba() is used)
-
----
-
-## 5. Run the Flask Server (app.py)
+##  Run the Flask Server (app.py)
 
 ### Run directly with Python
 
@@ -96,9 +49,9 @@ Check app.py for the exact endpoint name and request format.
 
 ---
 
-## ⚠️ IMPORTANT WARNINGS
 
-### ❌ DO NOT run FPL.ipynb
+
+### DO NOT run FPL.ipynb
 
 FPL.ipynb is a training and experimentation notebook.
 
@@ -113,7 +66,7 @@ Running this notebook without full understanding can break the inference environ
 
 ---
 
-### ❌ DO NOT run app_mark2.py
+### DO NOT run app_mark2.py
 
 app_mark2.py is NOT the production inference server.
 
